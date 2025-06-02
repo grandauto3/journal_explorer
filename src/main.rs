@@ -1,16 +1,32 @@
-use iced::Task;
-use iced::widget::svg;
-use iced::widget::{Row, Svg, button, column, row, text, text_input};
+use iced::Element;
+use iced::widget::PaneGrid;
+use iced::widget::{Row, button, column, container, pane_grid, row, svg, text, text_input};
+use iced::{Border, Color, border};
 use rfd::FileDialog;
 
 pub fn main() -> iced::Result {
-    iced::application("Counter", AppState::update, AppState::view).run()
+    iced::application("Journal Explorer", AppState::update, AppState::view).run()
 }
 
-#[derive(Default)]
+enum AppPane {
+    InputPane,
+    OutputPane,
+}
+
 struct AppState {
     path: String,
     journal_output: String,
+    pane: pane_grid::State<AppPane>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            journal_output: String::new(),
+            pane: pane_grid::State::new(AppPane::InputPane).0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -35,17 +51,25 @@ impl AppState {
         }
     }
 
-    fn view(&self) -> Row<Message> {
-        row![
-            column![
-                row![
-                    button(svg("resources/icons/folder_open.svg")).on_press(Message::OnFileDialogClicked),
-                    button(svg("resources/icons/file_open.svg")).on_press(Message::OnFileDialogClicked),
-                    text_input("Enter journal path...", &self.path).on_input(Message::PathInput)
+    fn view(&self) -> Element<'_, Message> {
+        pane_grid(&self.pane, move |pane, state, is_maximized| {
+            pane_grid::Content::new(match state {
+                AppPane::InputPane => column![
+                    row![
+                        button(svg("resources/icons/folder_open.svg"))
+                            .on_press(Message::OnFileDialogClicked),
+                        button(svg("resources/icons/file_open.svg"))
+                            .on_press(Message::OnFileDialogClicked),
+                        text_input("Enter journal path...", &self.path)
+                            .on_input(Message::PathInput)
+                    ],
+                    button("run").on_press(Message::ExecuteJournal)
                 ],
-                button("run").on_press(Message::ExecuteJournal)
-            ],
-            column![text(&self.journal_output)]
-        ]
+                AppPane::OutputPane => {
+                    column![container(text(&self.journal_output)).style(container::bordered_box)]
+                }
+            })
+        })
+        .into()
     }
 }
