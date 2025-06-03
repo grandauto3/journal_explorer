@@ -1,7 +1,9 @@
+use iced::alignment::Horizontal;
 use iced::{
-    Element,
+    Element, Length,
+    alignment::Vertical,
     widget::{
-        button, column, container, pane_grid,
+        Space, button, center, column, container, pane_grid,
         pane_grid::{Axis, Configuration},
         responsive, row, svg, text, text_input,
     },
@@ -65,14 +67,23 @@ impl AppState {
             pane_grid::Content::new(match state {
                 AppPane::InputPane => column![
                     row![
-                        button(svg("resources/icons/folder_open.svg"))
+                        button(svg("resources/icons/folder_open.svg").width(Length::Shrink))
                             .on_press(Message::OnFileDialogClicked),
-                        button(svg("resources/icons/file_open.svg"))
+                        Space::with_width(Length::Fixed(10f32)),
+                        button(svg("resources/icons/file_open.svg").width(Length::Shrink))
                             .on_press(Message::OnFileDialogClicked),
+                        Space::with_width(Length::Fixed(32f32)),
                         text_input("Enter journal path...", &self.path)
                             .on_input(Message::PathInput)
-                    ],
-                    button("run").on_press(Message::ExecuteJournal)
+                    ]
+                    .padding(10),
+                    container(
+                        button(text("run").center().width(Length::Fill))
+                            .on_press(Message::ExecuteJournal)
+                            .width(Length::Fill)
+                    )
+                    .center_x(Length::Fill)
+                    .padding(10)
                 ],
                 AppPane::OutputPane => {
                     column![
