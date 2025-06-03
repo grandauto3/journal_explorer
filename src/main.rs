@@ -1,26 +1,29 @@
-use iced::alignment::Horizontal;
+use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::{
-    Element, Length,
-    alignment::Vertical,
+    Color, Element, Length,
+    alignment::Horizontal,
     widget::{
-        Space, button, center, column, container, pane_grid,
+        Space, button, column, container, pane_grid,
         pane_grid::{Axis, Configuration},
-        responsive, row, svg, text, text_input,
+        row, scrollable, svg, text, text_input,
     },
 };
 use rfd::FileDialog;
+use std::{path::PathBuf, process::Command};
 
 pub fn main() -> iced::Result {
     iced::application("Journal Explorer", AppState::update, AppState::view).run()
 }
 
 enum AppPane {
-    InputPane,
-    OutputPane,
+    Input,
+    Output,
+    FileList,
 }
 
 struct AppState {
-    path: String,
+    path: PathBuf,
+    error_string: String,
     journal_output: String,
     panes: pane_grid::State<AppPane>,
 }
@@ -28,14 +31,21 @@ struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            path: String::new(),
+            path: PathBuf::new(),
+            error_string: String::new(),
             journal_output: String::new(),
             panes: pane_grid::State::with_configuration(Configuration::Split {
                 axis: Axis::Vertical,
-                ratio: 0.5,
-                a: Configuration::Pane(AppPane::InputPane).into(),
-                b: Configuration::Pane(AppPane::OutputPane).into(),
-            }), // pane_grid::State::new(AppPane::InputPane).0,
+                ratio: 0.33,
+                a: Configuration::Split {
+                    axis: Axis::Horizontal,
+                    ratio: 0.33,
+                    a: Configuration::Pane(AppPane::Input).into(),
+                    b: Configuration::Pane(AppPane::FileList).into(),
+                }
+                .into(),
+                b: Configuration::Pane(AppPane::Output).into(),
+            }),
         }
     }
 }
@@ -43,60 +53,98 @@ impl Default for AppState {
 #[derive(Debug, Clone)]
 enum Message {
     OnFileDialogClicked,
-    ExecuteJournal,
+    OnFolderDialogClicked,
+    LoadFiles,
     PathInput(String),
 }
 
 impl AppState {
     fn update(&mut self, message: Message) {
         match message {
-            Message::PathInput(path) => self.path = path,
-            Message::ExecuteJournal => println!("To run journalctl --file {}", &self.path),
+            Message::PathInput(path) => self.path = PathBuf::from(path),
+            Message::LoadFiles => {
+                //reset invalid_path
+                self.error_string = String::new();
+                let path = &self.path;
+
+                if path.is_dir() {
+                } else if path.is_file() {
+                } else {
+                    self.error_string = "Invalid Path".into();
+                }
+            }
+            Message::OnFolderDialogClicked => {
+                let folder = FileDialog::new().pick_folder();
+
+                if let Some(path) = folder {
+                    self.path = path;
+                }
+            }
             Message::OnFileDialogClicked => {
-                let files = FileDialog::new().pick_folder();
+                let files = FileDialog::new()
+                    .add_filter("journal files", &["journal"])
+                    .pick_file();
 
                 if let Some(path) = files {
-                    self.path = path.into_os_string().into_string().unwrap();
+                    self.path = path;
                 }
             }
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
-        pane_grid(&self.panes, move |pane, state, is_maximized| {
+        pane_grid(&self.panes, move |_, state, _| {
             pane_grid::Content::new(match state {
-                AppPane::InputPane => column![
-                    row![
-                        button(svg("resources/icons/folder_open.svg").width(Length::Shrink))
-                            .on_press(Message::OnFileDialogClicked),
-                        Space::with_width(Length::Fixed(10f32)),
-                        button(svg("resources/icons/file_open.svg").width(Length::Shrink))
-                            .on_press(Message::OnFileDialogClicked),
-                        Space::with_width(Length::Fixed(32f32)),
-                        text_input("Enter journal path...", &self.path)
-                            .on_input(Message::PathInput)
-                    ]
-                    .padding(10),
-                    container(
-                        button(text("run").center().width(Length::Fill))
-                            .on_press(Message::ExecuteJournal)
-                            .width(Length::Fill)
-                    )
-                    .center_x(Length::Fill)
-                    .padding(10)
-                ],
-                AppPane::OutputPane => {
+                AppPane::Input => container(
                     column![
-                        container(responsive(move |e| text(format!(
-                            "hello {}",
-                            &self.journal_output
+                        row![
+                            button(svg("resources/icons/folder_open.svg").width(Length::Shrink))
+                                .on_press(Message::OnFolderDialogClicked),
+                            Space::with_width(Length::Fixed(10f32)),
+                            button(svg("resources/icons/file_open.svg").width(Length::Shrink))
+                                .on_press(Message::OnFileDialogClicked),
+                            Space::with_width(Length::Fixed(32f32)),
+                            text_input("Enter journal path...", &self.path.to_string_lossy())
+                                .on_input(Message::PathInput)
+                        ]
+                        .padding(10),
+                        text(&self.error_string).color(Color::from_rgb(1f32, 0f32, 0f32)),
+                        container(
+                            button(text("load").center().width(Length::Fill))
+                                .on_press(Message::LoadFiles)
+                                .width(Length::Fill)
+                        )
+                        .center_x(Length::Fill)
+                        .padding(10)
+                    ]
+                    .align_x(Horizontal::Center),
+                )
+                .center(Length::Fill),
+                AppPane::Output => container(
+                    column![
+                        container(scrollable(text(&self.journal_output)).direction(
+                            Direction::Both {
+                                horizontal: Scrollbar::default(),
+                                vertical: Scrollbar::default()
+                            }
                         ))
-                        .into()))
+                        .padding(10)
+                        .center(Length::Fill)
                         .style(container::bordered_box)
                     ]
-                }
+                    .padding(10),
+                ),
+                AppPane::FileList => container(
+                    column![
+                        container(scrollable(text("files")))
+                            .center(Length::Fill)
+                            .style(container::bordered_box)
+                    ]
+                    .padding(10),
+                ),
             })
         })
+        .spacing(10)
         .into()
     }
 }
