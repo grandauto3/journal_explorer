@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { version = "0.13.1", default-features = false, features = ["image", "svg", "tiny-skia"] }
+iced = { version = "0.13.1", default-features = false, features = ["image", "svg", "tiny-skia", "lazy"] }
 rfd = "0.15.3"

@@ -1,7 +1,11 @@
-use iced::Element;
-use iced::widget::PaneGrid;
-use iced::widget::{Row, button, column, container, pane_grid, row, svg, text, text_input};
-use iced::{Border, Color, border};
+use iced::{
+    Element,
+    widget::{
+        button, column, container, pane_grid,
+        pane_grid::{Axis, Configuration},
+        responsive, row, svg, text, text_input,
+    },
+};
 use rfd::FileDialog;
 
 pub fn main() -> iced::Result {
@@ -16,7 +20,7 @@ enum AppPane {
 struct AppState {
     path: String,
     journal_output: String,
-    pane: pane_grid::State<AppPane>,
+    panes: pane_grid::State<AppPane>,
 }
 
 impl Default for AppState {
@@ -24,7 +28,12 @@ impl Default for AppState {
         Self {
             path: String::new(),
             journal_output: String::new(),
-            pane: pane_grid::State::new(AppPane::InputPane).0,
+            panes: pane_grid::State::with_configuration(Configuration::Split {
+                axis: Axis::Vertical,
+                ratio: 0.5,
+                a: Configuration::Pane(AppPane::InputPane).into(),
+                b: Configuration::Pane(AppPane::OutputPane).into(),
+            }), // pane_grid::State::new(AppPane::InputPane).0,
         }
     }
 }
@@ -52,7 +61,7 @@ impl AppState {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        pane_grid(&self.pane, move |pane, state, is_maximized| {
+        pane_grid(&self.panes, move |pane, state, is_maximized| {
             pane_grid::Content::new(match state {
                 AppPane::InputPane => column![
                     row![
@@ -66,7 +75,14 @@ impl AppState {
                     button("run").on_press(Message::ExecuteJournal)
                 ],
                 AppPane::OutputPane => {
-                    column![container(text(&self.journal_output)).style(container::bordered_box)]
+                    column![
+                        container(responsive(move |e| text(format!(
+                            "hello {}",
+                            &self.journal_output
+                        ))
+                        .into()))
+                        .style(container::bordered_box)
+                    ]
                 }
             })
         })
