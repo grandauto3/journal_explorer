@@ -69,6 +69,15 @@ impl AppState {
 
                 if path.is_dir() {
                 } else if path.is_file() {
+                    let file_content = Command::new("journalctl")
+                        .arg("--file")
+                        .arg(path.as_os_str())
+                        .output();
+                    self.journal_output = match file_content {
+                        Ok(content) => String::from_utf8(content.stdout)
+                            .unwrap_or("Could not read stdout".into()),
+                        Err(e) => format!("Error occurred during loading {}", e),
+                    };
                 } else {
                     self.error_string = "Invalid Path".into();
                 }
