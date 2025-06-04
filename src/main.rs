@@ -9,6 +9,7 @@ use iced::{
         svg, text, text_input,
     },
 };
+use iced_aw::spinner;
 use rfd::FileDialog;
 use std::{
     fs,
@@ -33,6 +34,8 @@ struct AppState {
     error_string: String,
     journal_output: String,
     panes: pane_grid::State<AppPane>,
+    show_spinner: bool,
+    show_dir_path: bool,
 }
 
 impl Default for AppState {
@@ -55,6 +58,8 @@ impl Default for AppState {
                 .into(),
                 b: Configuration::Pane(AppPane::Output).into(),
             }),
+            show_spinner: false,
+            show_dir_path: false,
         }
     }
 }
@@ -73,7 +78,9 @@ impl AppState {
         match message {
             Message::FileClicked((idx, path)) => {
                 self.selected_idx = Some(idx);
+                self.show_spinner = true;
                 self.journal_output = AppState::read_journal(Path::new(path.as_str()));
+                self.show_spinner = false;
             }
             Message::PathInput(path) => self.input_path = PathBuf::from(path),
             Message::LoadFiles => {
@@ -87,6 +94,7 @@ impl AppState {
                             self.file_paths = content
                                 .map(|e| match e {
                                     Ok(entry) => {
+                                        self.show_dir_path = true;
                                         if entry.path().is_file() {
                                             entry.path()
                                         } else {
@@ -105,7 +113,9 @@ impl AppState {
                         Err(e) => self.error_string = format!("Could not read dir: {}", e),
                     }
                 } else if path.is_file() {
+                    self.show_spinner = true;
                     self.journal_output = AppState::read_journal(path);
+                    self.show_spinner = false;
                 } else {
                     self.error_string = "Invalid Path".into();
                 }
@@ -212,7 +222,16 @@ impl AppState {
 
                     container(
                         column![
-                            text(self.input_path.to_string_lossy()),
+                            row![text(if self.show_dir_path {
+                                self.input_path.to_string_lossy()
+                            } else {
+                                "".into()
+                            }),]
+                            .push_maybe(if self.show_spinner {
+                                Some(spinner::Spinner::new())
+                            } else {
+                                None
+                            }),
                             container(
                                 container(
                                     scrollable(Column::with_children(list_content))
