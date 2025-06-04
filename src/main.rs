@@ -210,16 +210,23 @@ impl AppState {
                         .collect::<Vec<_>>();
 
                     container(
-                        scrollable(Column::with_children(list_content))
-                            .direction(Direction::Both {
-                                horizontal: Scrollbar::default(),
-                                vertical: Scrollbar::default(),
-                            })
-                            .height(Length::Fill),
+                        container(
+                            container(
+                                scrollable(Column::with_children(list_content))
+                                    .direction(Direction::Both {
+                                        horizontal: Scrollbar::default(),
+                                        vertical: Scrollbar::default(),
+                                    })
+                                    .height(Length::Fill),
+                            )
+                            .padding(5),
+                        )
+                        .style(container::bordered_box)
+                        .height(Length::Fill)
+                        .width(Length::Fill),
                     )
-                    .center(Length::Fill)
-                    .style(container::bordered_box)
                     .padding(10)
+                    .center(Length::Fill)
                 }
             })
         })
