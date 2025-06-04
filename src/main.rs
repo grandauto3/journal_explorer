@@ -1,5 +1,5 @@
 use iced::{
-    Color, Element, Length,
+    Color, Element, Length, Task,
     alignment::Horizontal,
     widget::{
         Column, Space, button, column, container, mouse_area, pane_grid,
@@ -68,22 +68,28 @@ impl Default for AppState {
 enum Message {
     OnFileDialogClicked,
     OnFolderDialogClicked,
-    LoadFiles,
+    OnLoadClicked,
+    OnFileLoaded(String),
     PathInput(String),
     FileClicked((u32, String)),
 }
 
 impl AppState {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::FileClicked((idx, path)) => {
                 self.selected_idx = Some(idx);
                 self.show_spinner = true;
-                self.journal_output = AppState::read_journal(Path::new(path.as_str()));
-                self.show_spinner = false;
+                Task::perform(
+                    AppState::read_journal(PathBuf::from(path)),
+                    Message::OnFileLoaded,
+                )
             }
-            Message::PathInput(path) => self.input_path = PathBuf::from(path),
-            Message::LoadFiles => {
+            Message::PathInput(path) => {
+                self.input_path = PathBuf::from(path);
+                Task::none()
+            }
+            Message::OnLoadClicked => {
                 //reset invalid_path
                 self.error_string = String::new();
                 let path = &self.input_path;
@@ -112,12 +118,16 @@ impl AppState {
                         }
                         Err(e) => self.error_string = format!("Could not read dir: {}", e),
                     }
+                    Task::none()
                 } else if path.is_file() {
                     self.show_spinner = true;
-                    self.journal_output = AppState::read_journal(path);
-                    self.show_spinner = false;
+                    Task::perform(
+                        AppState::read_journal(PathBuf::from(path)),
+                        Message::OnFileLoaded,
+                    )
                 } else {
                     self.error_string = "Invalid Path".into();
+                    Task::none()
                 }
             }
             Message::OnFolderDialogClicked => {
@@ -126,6 +136,7 @@ impl AppState {
                 if let Some(path) = folder {
                     self.input_path = path;
                 }
+                Task::none()
             }
             Message::OnFileDialogClicked => {
                 let files = FileDialog::new()
@@ -135,11 +146,17 @@ impl AppState {
                 if let Some(path) = files {
                     self.input_path = path;
                 }
+                Task::none()
+            }
+            Message::OnFileLoaded(output) => {
+                self.show_spinner = false;
+                self.journal_output = output;
+                Task::none()
             }
         }
     }
 
-    fn read_journal(path: &Path) -> String {
+    async fn read_journal(path: PathBuf) -> String {
         let file_content = Command::new("journalctl")
             .arg("--file")
             .arg(path.as_os_str())
@@ -171,7 +188,7 @@ impl AppState {
                         text(&self.error_string).color(Color::from_rgb(1f32, 0f32, 0f32)),
                         container(
                             button(text("load").center().width(Length::Fill))
-                                .on_press(Message::LoadFiles)
+                                .on_press(Message::OnLoadClicked)
                                 .width(Length::Fill)
                         )
                         .center_x(Length::Fill)
@@ -247,7 +264,8 @@ impl AppState {
                             .height(Length::Fill)
                             .width(Length::Fill)
                         ]
-                        .padding(10),
+                        .padding(10)
+                        .width(Length::Fill),
                     )
                     .center(Length::Fill)
                 }
