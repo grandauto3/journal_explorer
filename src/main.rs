@@ -191,7 +191,8 @@ impl AppState {
                         .enumerate()
                         .map(|(idx, path)| {
                             let idx = idx as u32;
-                            container(mouse_area(text(path.to_string_lossy())).on_press(
+                            let file_name = path.file_name().unwrap_or_default();
+                            container(mouse_area(text(file_name.to_string_lossy())).on_press(
                                 Message::FileClicked((idx, path.to_string_lossy().to_string())),
                             ))
                             .style(move |_| {
@@ -210,22 +211,25 @@ impl AppState {
                         .collect::<Vec<_>>();
 
                     container(
-                        container(
+                        column![
+                            text(self.input_path.to_string_lossy()),
                             container(
-                                scrollable(Column::with_children(list_content))
-                                    .direction(Direction::Both {
-                                        horizontal: Scrollbar::default(),
-                                        vertical: Scrollbar::default(),
-                                    })
-                                    .height(Length::Fill),
+                                container(
+                                    scrollable(Column::with_children(list_content))
+                                        .direction(Direction::Both {
+                                            horizontal: Scrollbar::default(),
+                                            vertical: Scrollbar::default(),
+                                        })
+                                        .height(Length::Fill),
+                                )
+                                .padding(5),
                             )
-                            .padding(5),
-                        )
-                        .style(container::bordered_box)
-                        .height(Length::Fill)
-                        .width(Length::Fill),
+                            .style(container::bordered_box)
+                            .height(Length::Fill)
+                            .width(Length::Fill)
+                        ]
+                        .padding(10),
                     )
-                    .padding(10)
                     .center(Length::Fill)
                 }
             })
