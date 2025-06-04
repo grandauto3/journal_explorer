@@ -1,15 +1,20 @@
-use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::{
     Color, Element, Length,
     alignment::Horizontal,
     widget::{
-        Space, button, column, container, pane_grid,
+        Column, Space, button, column, container, mouse_area, pane_grid,
         pane_grid::{Axis, Configuration},
-        row, scrollable, svg, text, text_input,
+        row, scrollable,
+        scrollable::{Direction, Scrollbar},
+        svg, text, text_input,
     },
 };
 use rfd::FileDialog;
-use std::{path::PathBuf, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub fn main() -> iced::Result {
     iced::application("Journal Explorer", AppState::update, AppState::view).run()
@@ -22,7 +27,9 @@ enum AppPane {
 }
 
 struct AppState {
-    path: PathBuf,
+    input_path: PathBuf,
+    file_paths: Vec<PathBuf>,
+    selected_idx: Option<u32>,
     error_string: String,
     journal_output: String,
     panes: pane_grid::State<AppPane>,
@@ -31,7 +38,9 @@ struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            path: PathBuf::new(),
+            input_path: PathBuf::new(),
+            file_paths: vec![],
+            selected_idx: None,
             error_string: String::new(),
             journal_output: String::new(),
             panes: pane_grid::State::with_configuration(Configuration::Split {
@@ -56,28 +65,47 @@ enum Message {
     OnFolderDialogClicked,
     LoadFiles,
     PathInput(String),
+    FileClicked((u32, String)),
 }
 
 impl AppState {
     fn update(&mut self, message: Message) {
         match message {
-            Message::PathInput(path) => self.path = PathBuf::from(path),
+            Message::FileClicked((idx, path)) => {
+                self.selected_idx = Some(idx);
+                self.journal_output = AppState::read_journal(Path::new(path.as_str()));
+            }
+            Message::PathInput(path) => self.input_path = PathBuf::from(path),
             Message::LoadFiles => {
                 //reset invalid_path
                 self.error_string = String::new();
-                let path = &self.path;
+                let path = &self.input_path;
 
                 if path.is_dir() {
+                    match fs::read_dir(path) {
+                        Ok(content) => {
+                            self.file_paths = content
+                                .map(|e| match e {
+                                    Ok(entry) => {
+                                        if entry.path().is_file() {
+                                            entry.path()
+                                        } else {
+                                            PathBuf::new()
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.error_string =
+                                            format!("Could not read dir entry: {}", e);
+                                        PathBuf::new()
+                                    }
+                                })
+                                .filter(move |x| *x != PathBuf::new())
+                                .collect::<Vec<_>>()
+                        }
+                        Err(e) => self.error_string = format!("Could not read dir: {}", e),
+                    }
                 } else if path.is_file() {
-                    let file_content = Command::new("journalctl")
-                        .arg("--file")
-                        .arg(path.as_os_str())
-                        .output();
-                    self.journal_output = match file_content {
-                        Ok(content) => String::from_utf8(content.stdout)
-                            .unwrap_or("Could not read stdout".into()),
-                        Err(e) => format!("Error occurred during loading {}", e),
-                    };
+                    self.journal_output = AppState::read_journal(path);
                 } else {
                     self.error_string = "Invalid Path".into();
                 }
@@ -86,7 +114,7 @@ impl AppState {
                 let folder = FileDialog::new().pick_folder();
 
                 if let Some(path) = folder {
-                    self.path = path;
+                    self.input_path = path;
                 }
             }
             Message::OnFileDialogClicked => {
@@ -95,9 +123,22 @@ impl AppState {
                     .pick_file();
 
                 if let Some(path) = files {
-                    self.path = path;
+                    self.input_path = path;
                 }
             }
+        }
+    }
+
+    fn read_journal(path: &Path) -> String {
+        let file_content = Command::new("journalctl")
+            .arg("--file")
+            .arg(path.as_os_str())
+            .output();
+        match file_content {
+            Ok(content) => {
+                String::from_utf8(content.stdout).unwrap_or("Could not read stdout".into())
+            }
+            Err(e) => format!("Error occurred during loading {}", e),
         }
     }
 
@@ -113,7 +154,7 @@ impl AppState {
                             button(svg("resources/icons/file_open.svg").width(Length::Shrink))
                                 .on_press(Message::OnFileDialogClicked),
                             Space::with_width(Length::Fixed(32f32)),
-                            text_input("Enter journal path...", &self.path.to_string_lossy())
+                            text_input("Enter journal path...", &self.input_path.to_string_lossy())
                                 .on_input(Message::PathInput)
                         ]
                         .padding(10),
@@ -143,14 +184,43 @@ impl AppState {
                     ]
                     .padding(10),
                 ),
-                AppPane::FileList => container(
-                    column![
-                        container(scrollable(text("files")))
-                            .center(Length::Fill)
-                            .style(container::bordered_box)
-                    ]
-                    .padding(10),
-                ),
+                AppPane::FileList => {
+                    let list_content = self
+                        .file_paths
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, path)| {
+                            let idx = idx as u32;
+                            container(mouse_area(text(path.to_string_lossy())).on_press(
+                                Message::FileClicked((idx, path.to_string_lossy().to_string())),
+                            ))
+                            .style(move |_| {
+                                if self.selected_idx.is_some_and(|e| e == idx) {
+                                    container::Style {
+                                        text_color: Some(Color::WHITE),
+                                        background: Some(Color::from_rgb(0f32, 0f32, 1f32).into()),
+                                        ..container::Style::default()
+                                    }
+                                } else {
+                                    container::Style::default()
+                                }
+                            })
+                            .into()
+                        })
+                        .collect::<Vec<_>>();
+
+                    container(
+                        scrollable(Column::with_children(list_content))
+                            .direction(Direction::Both {
+                                horizontal: Scrollbar::default(),
+                                vertical: Scrollbar::default(),
+                            })
+                            .height(Length::Fill),
+                    )
+                    .center(Length::Fill)
+                    .style(container::bordered_box)
+                    .padding(10)
+                }
             })
         })
         .spacing(10)
