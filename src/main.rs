@@ -11,11 +11,7 @@ use iced::{
 };
 use iced_aw::spinner;
 use rfd::FileDialog;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{fs, iter::once, path::PathBuf, process::Command};
 
 pub fn main() -> iced::Result {
     iced::application("Journal Explorer", AppState::update, AppState::view).run()
@@ -33,6 +29,7 @@ struct AppState {
     selected_idx: Option<u32>,
     error_string: String,
     journal_output: String,
+    search_term: String,
     panes: pane_grid::State<AppPane>,
     show_spinner: bool,
     show_dir_path: bool,
@@ -46,6 +43,7 @@ impl Default for AppState {
             selected_idx: None,
             error_string: String::new(),
             journal_output: String::new(),
+            search_term: String::new(),
             panes: pane_grid::State::with_configuration(Configuration::Split {
                 axis: Axis::Vertical,
                 ratio: 0.33,
@@ -72,6 +70,7 @@ enum Message {
     OnFileLoaded(String),
     PathInput(String),
     FileClicked((u32, String)),
+    Search(String),
 }
 
 impl AppState {
@@ -153,6 +152,19 @@ impl AppState {
                 self.journal_output = output;
                 Task::none()
             }
+            Message::Search(search_term) => {
+                self.search_term = search_term;
+
+                let fragmented_output = self
+                    .journal_output
+                    .match_indices(self.search_term.as_str())
+                    .map(|(idx, term)| {
+                        let idx = (idx, idx + term.len());
+                    })
+                    .collect::<Vec<_>>();
+
+                Task::none()
+            }
         }
     }
 
@@ -199,6 +211,7 @@ impl AppState {
                 .center(Length::Fill),
                 AppPane::Output => container(
                     column![
+                        text_input("Search...", &self.search_term).on_input(Message::Search),
                         container(scrollable(text(&self.journal_output)).direction(
                             Direction::Both {
                                 horizontal: Scrollbar::default(),
@@ -209,6 +222,7 @@ impl AppState {
                         .center(Length::Fill)
                         .style(container::bordered_box)
                     ]
+                    .spacing(5)
                     .padding(10),
                 ),
                 AppPane::FileList => {
@@ -273,5 +287,49 @@ impl AppState {
         })
         .spacing(10)
         .into()
+    }
+}
+
+pub fn split_by_delimiter<'a>(text: &'a str, delimiter: &'a str) -> Vec<&'a str> {
+    text.split_terminator(delimiter)
+        .flat_map(|part| {
+            once(part).chain(once(delimiter)).take({
+                let last_element = text.split(delimiter).last().unwrap();
+                if part == last_element { 1 } else { 2 }
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::split_by_delimiter;
+
+    #[test]
+    fn get_separated_string() {
+        let result = split_by_delimiter("HelloRustWorld", "Rust");
+        assert_eq!(result, vec!["Hello", "Rust", "World"]);
+    }
+
+    #[test]
+    fn get_separated_string_by_matching_long() {
+        let test_string = "HelloRustWorldKek";
+
+        let result = split_by_delimiter(test_string, "Rust");
+        assert_eq!(result, vec!["Hello", "Rust", "WorldKek"]);
+    }
+    #[test]
+    fn get_separated_string_by_matching_long_with_whitespace() {
+        let test_string = "Hello Rust World Kek";
+
+        let result = split_by_delimiter(test_string, "Rust");
+        assert_eq!(result, vec!["Hello ", "Rust", " World Kek"]);
+    }
+    #[test]
+    fn get_separated_string_by_matching_multiple() {
+        let test_string = "HelloRustWorldKekRust";
+
+        let result = split_by_delimiter(test_string, "Rust");
+        assert_eq!(result, vec!["Hello", "Rust", "WorldKek", "Rust"]);
     }
 }
