@@ -1,12 +1,14 @@
 use iced::{
-    Color, Element, Length, Task,
+    Color, Element, Font, Length, Task,
     alignment::Horizontal,
     widget::{
         Column, Space, button, column, container, mouse_area, pane_grid,
         pane_grid::{Axis, Configuration},
-        row, scrollable,
+        rich_text, row, scrollable,
         scrollable::{Direction, Scrollbar},
-        svg, text, text_input,
+        span, svg, text,
+        text::Span,
+        text_input,
     },
 };
 use iced_aw::spinner;
@@ -23,26 +25,27 @@ enum AppPane {
     FileList,
 }
 
-struct AppState {
+struct AppState<'a> {
     input_path: PathBuf,
     file_paths: Vec<PathBuf>,
     selected_idx: Option<u32>,
     error_string: String,
-    journal_output: String,
+    //this is a Vec<String> so we can fragment the output for search
+    journal_output: Vec<Span<'a, Message>>,
     search_term: String,
     panes: pane_grid::State<AppPane>,
     show_spinner: bool,
     show_dir_path: bool,
 }
 
-impl Default for AppState {
+impl Default for AppState<'_> {
     fn default() -> Self {
         Self {
             input_path: PathBuf::new(),
             file_paths: vec![],
             selected_idx: None,
             error_string: String::new(),
-            journal_output: String::new(),
+            journal_output: vec![],
             search_term: String::new(),
             panes: pane_grid::State::with_configuration(Configuration::Split {
                 axis: Axis::Vertical,
@@ -73,7 +76,7 @@ enum Message {
     Search(String),
 }
 
-impl AppState {
+impl AppState<'_> {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::FileClicked((idx, path)) => {
@@ -149,17 +152,31 @@ impl AppState {
             }
             Message::OnFileLoaded(output) => {
                 self.show_spinner = false;
-                self.journal_output = output;
+                self.journal_output = vec![span(output)];
                 Task::none()
             }
             Message::Search(search_term) => {
-                self.search_term = search_term;
 
-                let fragmented_output = self
+                self.search_term = search_term;
+                let joined = self
                     .journal_output
-                    .match_indices(self.search_term.as_str())
-                    .map(|(idx, term)| {
-                        let idx = (idx, idx + term.len());
+                    .iter()
+                    .map(|e| e.text.to_string())
+                    .collect::<String>();
+                let fragmented_output =
+                    split_by_delimiter(joined.as_str(), self.search_term.as_str())
+                        .iter()
+                        .map(|e| span(e.to_string()))
+                        .collect::<Vec<Span<'_, Message, Font>>>();
+
+                self.journal_output = fragmented_output
+                    .into_iter()
+                    .map(|e| {
+                        if e.text == self.search_term {
+                            e.background(Color::from_rgb(1f32, 1f32, 0f32))
+                        } else {
+                            e
+                        }
                     })
                     .collect::<Vec<_>>();
 
@@ -212,7 +229,7 @@ impl AppState {
                 AppPane::Output => container(
                     column![
                         text_input("Search...", &self.search_term).on_input(Message::Search),
-                        container(scrollable(text(&self.journal_output)).direction(
+                        container(scrollable(rich_text(&self.journal_output)).direction(
                             Direction::Both {
                                 horizontal: Scrollbar::default(),
                                 vertical: Scrollbar::default()
