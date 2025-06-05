@@ -1,6 +1,7 @@
 use iced::{
-    Color, Element, Font, Length, Task,
+    Color, Element, Font, Length, Subscription, Task,
     alignment::Horizontal,
+    keyboard::{Key, key::Named, on_key_press},
     padding,
     widget::{
         Column, Space, button, column, container, mouse_area, pane_grid,
@@ -17,7 +18,9 @@ use rfd::FileDialog;
 use std::{fs, iter::once, path::PathBuf, process::Command};
 
 pub fn main() -> iced::Result {
-    iced::application("Journal Explorer", AppState::update, AppState::view).run()
+    iced::application("Journal Explorer", AppState::update, AppState::view)
+        .subscription(AppState::subscription)
+        .run()
 }
 
 enum AppPane {
@@ -67,6 +70,12 @@ impl Default for AppState<'_> {
 }
 
 #[derive(Debug, Clone)]
+enum KeyBoardDirection {
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone)]
 enum Message {
     OnFileDialogClicked,
     OnFolderDialogClicked,
@@ -75,6 +84,7 @@ enum Message {
     PathInput(String),
     FileClicked((u32, String)),
     Search(String),
+    OnArrowKeyPressed(KeyBoardDirection),
 }
 
 impl AppState<'_> {
@@ -176,6 +186,29 @@ impl AppState<'_> {
                     .collect::<Vec<_>>();
 
                 Task::none()
+            }
+            Message::OnArrowKeyPressed(dir) => {
+                if let Some(idx) = &mut self.selected_idx {
+                    match dir {
+                        KeyBoardDirection::Down => {
+                            let upper_limit = self.file_paths.len();
+                            if (*idx as usize) < upper_limit - 1 {
+                                *idx += 1
+                            }
+                        }
+                        KeyBoardDirection::Up => *idx = idx.saturating_sub(1),
+                    }
+                }
+                self.show_spinner = true;
+                Task::perform(
+                    AppState::read_journal(
+                        self.file_paths
+                            .get(self.selected_idx.unwrap() as usize)
+                            .unwrap()
+                            .clone(),
+                    ),
+                    Message::OnFileLoaded,
+                )
             }
         }
     }
@@ -318,6 +351,22 @@ impl AppState<'_> {
         })
         .spacing(10)
         .into()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        on_key_press(|key, _| {
+            if let Key::Named(keycode) = key {
+                if keycode == Named::ArrowDown {
+                    Some(Message::OnArrowKeyPressed(KeyBoardDirection::Down))
+                } else if keycode == Named::ArrowUp {
+                    Some(Message::OnArrowKeyPressed(KeyBoardDirection::Up))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
     }
 }
 
