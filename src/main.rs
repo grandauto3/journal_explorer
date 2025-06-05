@@ -97,29 +97,13 @@ impl AppState<'_> {
                 let path = &self.input_path;
 
                 if path.is_dir() {
-                    match fs::read_dir(path) {
-                        Ok(content) => {
-                            self.file_paths = content
-                                .map(|e| match e {
-                                    Ok(entry) => {
-                                        self.show_dir_path = true;
-                                        if entry.path().is_file() {
-                                            entry.path()
-                                        } else {
-                                            PathBuf::new()
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.error_string =
-                                            format!("Could not read dir entry: {}", e);
-                                        PathBuf::new()
-                                    }
-                                })
-                                .filter(move |x| *x != PathBuf::new())
-                                .collect::<Vec<_>>()
+                    match Self::load_dir_content(path) {
+                        Ok(paths) => {
+                            self.file_paths = paths;
                         }
-                        Err(e) => self.error_string = format!("Could not read dir: {}", e),
-                    }
+                        Err(e) => self.error_string = format!("Error when reading paths: {}", e),
+                    };
+
                     Task::none()
                 } else if path.is_file() {
                     self.show_spinner = true;
@@ -138,6 +122,14 @@ impl AppState<'_> {
                 if let Some(path) = folder {
                     self.input_path = path;
                 }
+
+                match Self::load_dir_content(&self.input_path) {
+                    Ok(paths) => {
+                        self.file_paths = paths;
+                    }
+                    Err(e) => self.error_string = format!("Error when reading paths: {}", e),
+                };
+
                 Task::none()
             }
             Message::OnFileDialogClicked => {
@@ -148,7 +140,10 @@ impl AppState<'_> {
                 if let Some(path) = files {
                     self.input_path = path;
                 }
-                Task::none()
+                Task::perform(
+                    AppState::read_journal(self.input_path.clone()),
+                    Message::OnFileLoaded,
+                )
             }
             Message::OnFileLoaded(output) => {
                 self.show_spinner = false;
@@ -156,7 +151,6 @@ impl AppState<'_> {
                 Task::none()
             }
             Message::Search(search_term) => {
-
                 self.search_term = search_term;
                 let joined = self
                     .journal_output
@@ -183,6 +177,21 @@ impl AppState<'_> {
                 Task::none()
             }
         }
+    }
+
+    fn load_dir_content(path: &PathBuf) -> anyhow::Result<Vec<PathBuf>> {
+        fs::read_dir(path)?
+            .map(|e| {
+                let entry = e?;
+
+                if entry.path().is_file() {
+                    Ok(entry.path())
+                } else {
+                    Ok(PathBuf::new())
+                }
+            })
+            .filter(|x| x.as_ref().is_ok_and(|e| *e != PathBuf::new()))
+            .collect::<anyhow::Result<Vec<_>>>()
     }
 
     async fn read_journal(path: PathBuf) -> String {
