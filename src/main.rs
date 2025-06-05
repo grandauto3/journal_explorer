@@ -1,3 +1,12 @@
+/*
+    Feature ideas:
+    - fix side left side panel
+    - search jumps to every occurrence
+
+    Bugs:
+    - closing FileDialog logs an error
+    - file_list does not move on key input
+*/
 mod utils;
 
 use iced::{
@@ -15,7 +24,7 @@ use iced::{
         text_input,
     },
 };
-use iced_aw::spinner;
+use iced_aw::{selection_list, spinner};
 use rfd::FileDialog;
 use std::path::PathBuf;
 
@@ -34,7 +43,7 @@ enum AppPane {
 struct AppState<'a> {
     input_path: PathBuf,
     file_paths: Vec<PathBuf>,
-    selected_idx: Option<u32>,
+    selected_idx: Option<usize>,
     error_string: String,
     //this is a Vec<String> so we can fragment the output for search
     journal_output: Vec<Span<'a, Message>>,
@@ -84,7 +93,7 @@ enum Message {
     OnLoadClicked,
     OnFileLoaded(String),
     PathInput(String),
-    FileClicked((u32, String)),
+    FileClicked(usize, String),
     Search(String),
     OnArrowKeyPressed(KeyBoardDirection),
 }
@@ -92,7 +101,7 @@ enum Message {
 impl AppState<'_> {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::FileClicked((idx, path)) => {
+            Message::FileClicked(idx, path) => {
                 self.selected_idx = Some(idx);
                 self.show_spinner = true;
                 Task::perform(
@@ -264,30 +273,32 @@ impl AppState<'_> {
                     .padding(10),
                 ),
                 AppPane::FileList => {
-                    let list_content = self
-                        .file_paths
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, path)| {
-                            let idx = idx as u32;
-                            let file_name = path.file_name().unwrap_or_default();
-                            container(mouse_area(text(file_name.to_string_lossy())).on_press(
-                                Message::FileClicked((idx, path.to_string_lossy().to_string())),
-                            ))
-                            .style(move |_| {
-                                if self.selected_idx.is_some_and(|e| e == idx) {
-                                    container::Style {
-                                        text_color: Some(Color::WHITE),
-                                        background: Some(Color::from_rgb(0f32, 0f32, 1f32).into()),
-                                        ..container::Style::default()
-                                    }
-                                } else {
-                                    container::Style::default()
-                                }
-                            })
-                            .into()
-                        })
-                        .collect::<Vec<_>>();
+                    // let list_content = self
+                    //     .file_paths
+                    //     .iter()
+                    //     .enumerate()
+                    //     .map(|(idx, path)| {
+                    //         let file_name = path.file_name().unwrap_or_default();
+                    //         container(mouse_area(text(file_name.to_string_lossy())).on_press(
+                    //             Message::FileClicked(idx, path.to_string_lossy().to_string()),
+                    //         ))
+                    //         .style(move |_| {
+                    //             if self.selected_idx.is_some_and(|e| e == idx) {
+                    //                 container::Style {
+                    //                     text_color: Some(Color::WHITE),
+                    //                     background: Some(Color::from_rgb(0f32, 0f32, 1f32).into()),
+                    //                     ..container::Style::default()
+                    //                 }
+                    //             } else {
+                    //                 container::Style::default()
+                    //             }
+                    //         })
+                    //         .into()
+                    //     })
+                    //     .collect::<Vec<_>>();
+
+                    let sl = selection_list(self.file_paths
+                                            , Message::FileClicked);
 
                     container(
                         column![
@@ -301,20 +312,10 @@ impl AppState<'_> {
                             } else {
                                 None
                             }),
-                            container(
-                                container(
-                                    scrollable(Column::with_children(list_content))
-                                        .direction(Direction::Both {
-                                            horizontal: Scrollbar::default(),
-                                            vertical: Scrollbar::default(),
-                                        })
-                                        .height(Length::Fill),
-                                )
-                                .padding(5),
-                            )
-                            .style(container::bordered_box)
-                            .height(Length::Fill)
-                            .width(Length::Fill)
+                            container(sl)
+                                .style(container::bordered_box)
+                                .height(Length::Fill)
+                                .width(Length::Fill)
                         ]
                         .padding(10)
                         .width(Length::Fill),
