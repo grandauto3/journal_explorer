@@ -1,6 +1,7 @@
 use iced::{
     Color, Element, Font, Length, Task,
     alignment::Horizontal,
+    padding,
     widget::{
         Column, Space, button, column, container, mouse_area, pane_grid,
         pane_grid::{Axis, Configuration},
@@ -238,12 +239,16 @@ impl AppState<'_> {
                 AppPane::Output => container(
                     column![
                         text_input("Search...", &self.search_term).on_input(Message::Search),
-                        container(scrollable(rich_text(&self.journal_output)).direction(
-                            Direction::Both {
+                        container(
+                            scrollable(
+                                container(rich_text(&self.journal_output))
+                                    .padding(padding::bottom(10))
+                            )
+                            .direction(Direction::Both {
                                 horizontal: Scrollbar::default(),
                                 vertical: Scrollbar::default()
-                            }
-                        ))
+                            })
+                        )
                         .padding(10)
                         .center(Length::Fill)
                         .style(container::bordered_box)
