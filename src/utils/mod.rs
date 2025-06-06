@@ -35,6 +35,13 @@ pub async fn read_journal(path: PathBuf) -> String {
     }
 }
 
+pub fn path_vec_to_string_vec(paths: &Vec<PathBuf>) -> Vec<String> {
+    paths
+        .iter()
+        .map(|e| e.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::split_by_delimiter;

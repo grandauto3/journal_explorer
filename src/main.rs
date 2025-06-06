@@ -10,7 +10,7 @@
 mod utils;
 
 use iced::{
-    Color, Element, Font, Length, Subscription, Task,
+    Color, Element, Font, Length, Padding, Subscription, Task,
     alignment::Horizontal,
     keyboard::{Key, key::Named, on_key_press},
     padding,
@@ -24,9 +24,11 @@ use iced::{
         text_input,
     },
 };
-use iced_aw::{selection_list, spinner};
+use iced_aw::helpers::selection_list_with;
+use iced_aw::{selection_list, spinner, style};
 use rfd::FileDialog;
-use std::path::PathBuf;
+use std::fmt::{Display, Formatter};
+use std::path::{Path, PathBuf};
 
 pub fn main() -> iced::Result {
     iced::application("Journal Explorer", AppState::update, AppState::view)
@@ -40,9 +42,23 @@ enum AppPane {
     FileList,
 }
 
+#[repr(transparent)]
+struct PathWrapper(PathBuf);
+
+impl Display for PathWrapper {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0.clone().into_os_string().into_string().unwrap()
+        )
+    }
+}
+
 struct AppState<'a> {
     input_path: PathBuf,
-    file_paths: Vec<PathBuf>,
+    //needs to be string for selection_list, PathBuf does not implement Display
+    file_paths: Vec<String>,
     selected_idx: Option<usize>,
     error_string: String,
     //this is a Vec<String> so we can fragment the output for search
@@ -121,7 +137,7 @@ impl AppState<'_> {
                 if path.is_dir() {
                     match utils::load_dir_content(path) {
                         Ok(paths) => {
-                            self.file_paths = paths;
+                            self.file_paths = utils::path_vec_to_string_vec(&paths);
                         }
                         Err(e) => self.error_string = format!("Error when reading paths: {}", e),
                     };
@@ -147,7 +163,7 @@ impl AppState<'_> {
 
                 match utils::load_dir_content(&self.input_path) {
                     Ok(paths) => {
-                        self.file_paths = paths;
+                        self.file_paths = utils::path_vec_to_string_vec(&paths);
                     }
                     Err(e) => self.error_string = format!("Error when reading paths: {}", e),
                 };
@@ -212,12 +228,12 @@ impl AppState<'_> {
                 }
                 self.show_spinner = true;
                 Task::perform(
-                    utils::read_journal(
+                    utils::read_journal(PathBuf::from(
                         self.file_paths
-                            .get(self.selected_idx.unwrap() as usize)
+                            .get(self.selected_idx.unwrap())
                             .unwrap()
                             .clone(),
-                    ),
+                    )),
                     Message::OnFileLoaded,
                 )
             }
@@ -272,56 +288,50 @@ impl AppState<'_> {
                     .spacing(5)
                     .padding(10),
                 ),
-                AppPane::FileList => {
-                    // let list_content = self
-                    //     .file_paths
-                    //     .iter()
-                    //     .enumerate()
-                    //     .map(|(idx, path)| {
-                    //         let file_name = path.file_name().unwrap_or_default();
-                    //         container(mouse_area(text(file_name.to_string_lossy())).on_press(
-                    //             Message::FileClicked(idx, path.to_string_lossy().to_string()),
-                    //         ))
-                    //         .style(move |_| {
-                    //             if self.selected_idx.is_some_and(|e| e == idx) {
-                    //                 container::Style {
-                    //                     text_color: Some(Color::WHITE),
-                    //                     background: Some(Color::from_rgb(0f32, 0f32, 1f32).into()),
-                    //                     ..container::Style::default()
-                    //                 }
-                    //             } else {
-                    //                 container::Style::default()
-                    //             }
-                    //         })
-                    //         .into()
-                    //     })
-                    //     .collect::<Vec<_>>();
+                AppPane::FileList => container(
+                    column![
+                        row![text(if self.show_dir_path {
+                            self.input_path.to_string_lossy()
+                        } else {
+                            "".into()
+                        }),]
+                        .push_maybe(if self.show_spinner {
+                            Some(spinner::Spinner::new())
+                        } else {
+                            None
+                        }),
+                        container(selection_list_with(
+                            { self.file_paths.as_slice() },
+                            Message::FileClicked,
+                            16f32,
+                            Padding::from(5f32),
+                            |t, s| {
+                                let box_style = container::bordered_box(t);
+                                let primary = style::selection_list::primary(t, s);
+                                let default = style::selection_list::Style {
+                                    background: box_style.background.unwrap(),
+                                    border_color: box_style.border.color,
+                                    border_width: box_style.border.width,
 
-                    let sl = selection_list(self.file_paths
-                                            , Message::FileClicked);
+                                    ..primary
+                                };
 
-                    container(
-                        column![
-                            row![text(if self.show_dir_path {
-                                self.input_path.to_string_lossy()
-                            } else {
-                                "".into()
-                            }),]
-                            .push_maybe(if self.show_spinner {
-                                Some(spinner::Spinner::new())
-                            } else {
-                                None
-                            }),
-                            container(sl)
-                                .style(container::bordered_box)
-                                .height(Length::Fill)
-                                .width(Length::Fill)
-                        ]
-                        .padding(10)
-                        .width(Length::Fill),
-                    )
-                    .center(Length::Fill)
-                }
+                                match s {
+                                    style::status::Status::Selected => primary,
+                                    _ => default,
+                                }
+                            },
+                            None,
+                            Font::default()
+                        ))
+                        .style(container::bordered_box)
+                        .height(Length::Fill)
+                        .width(Length::Fill)
+                    ]
+                    .padding(10)
+                    .width(Length::Fill),
+                )
+                .center(Length::Fill),
             })
         })
         .spacing(10)
